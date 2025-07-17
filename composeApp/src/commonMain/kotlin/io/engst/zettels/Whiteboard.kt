@@ -120,7 +120,7 @@ fun Whiteboard(
     var boardScale by remember { mutableStateOf(1f) }
 
     var dragItemId by remember { mutableStateOf<String?>(null) }
-    var dragOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var dragItemOffset by remember { mutableStateOf(IntOffset.Zero) }
 
     val itemBounds = remember(items) {
         if (items.isEmpty()) IntRect.Zero
@@ -211,7 +211,7 @@ fun Whiteboard(
 
     fun getItemOffset(item: NoteItem): IntOffset {
         return if (dragItemId == item.id) {
-            dragOffset
+            dragItemOffset
         } else {
             item.offset
         }
@@ -228,56 +228,68 @@ fun Whiteboard(
                 .pointerInput(items) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
+                        println("First down at ${firstDown.position}")
                         var pointerCount = 1
                         var touchedItem: NoteItem? = null
-                        var isTransforming = false
+                        var boardTransforming = false
                         var longPressJob: Job? = null
-                        var totalMove = Offset.Zero
+                        var totalChange = Offset.Zero
+                        var previousDistance = 0f
+                        var previousCentroid = IntOffset.Zero
 
                         touchedItem = findItemAtPosition(items, firstDown.position)
                         if (touchedItem != null) {
+                            println("Touched item: ${touchedItem.id} at ${touchedItem.offset}")
                             longPressJob = scope.launch {
+                                println("Wait ${viewConfig.longPressTimeoutMillis} for long press detection")
                                 delay(viewConfig.longPressTimeoutMillis)
-                                if (pointerCount == 1 && !isTransforming) {
+                                println("Long press timeout: pointers=${pointerCount}")
+                                if (pointerCount == 1 && !boardTransforming) {
                                     dragItemId = touchedItem.id
-                                    dragOffset = touchedItem.offset
+                                    dragItemOffset = touchedItem.offset
+                                    println("Starting drag for item: ${dragItemId} at offset $dragItemOffset")
                                 }
                             }
                         }
 
                         do {
                             val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                            val currentPointers = event.changes.filter { it.pressed }
-                            pointerCount = currentPointers.size
+                            pointerCount = event.changes.filter { it.pressed }.size
 
                             when {
                                 pointerCount >= 2 -> {
                                     longPressJob?.cancel()
 
-                                    // End drag if multi-touch starts
-                                    if (dragItemId != null) {
-                                        onMoveItem(dragItemId!!, dragOffset)
-                                        dragItemId = null
-                                    }
+                                    // If we just transitioned from single to multi-touch
+                                    if (!boardTransforming) {
 
-                                    if (!isTransforming) {
-                                        isTransforming = true
-                                    }
+                                        boardTransforming = true
 
-                                    if (currentPointers.size >= 2) {
-                                        val pointer1 = currentPointers[0]
-                                        val pointer2 = currentPointers[1]
+                                        // End drag if multi-touch starts
+                                        if (dragItemId != null) {
+                                            onMoveItem(dragItemId!!, dragItemOffset)
+                                            dragItemId = null
+                                        }
 
-                                        val currentDistance =
+                                        // Initialize multi-touch state
+                                        val pointer1 = event.changes[0]
+                                        val pointer2 = event.changes[1]
+                                        previousDistance =
                                             (pointer1.position - pointer2.position).getDistance()
-                                        val previousDistance =
-                                            (pointer1.previousPosition - pointer2.previousPosition).getDistance()
+                                        previousCentroid =
+                                            ((pointer1.position + pointer2.position) / 2f).round()
+                                    } else {
+                                        // Continue multi-touch gesture
+                                        val pointer1 = event.changes[0]
+                                        val pointer2 = event.changes[1]
+
+                                        val distance =
+                                            (pointer1.position - pointer2.position).getDistance()
+                                        val centroid =
+                                            ((pointer1.position + pointer2.position) / 2f).round()
 
                                         if (previousDistance > 0f) {
-                                            val zoom = currentDistance / previousDistance
-                                            val centroid =
-                                                ((pointer1.position + pointer2.position) / 2f).round()
-
+                                            val zoom = distance / previousDistance
                                             val newScale = (boardScale * zoom).coerceIn(
                                                 BOARD_ZOOM_MIN,
                                                 BOARD_ZOOM_MAX
@@ -287,17 +299,16 @@ fun Whiteboard(
                                             boardScale = newScale
                                         }
 
-                                        val centroid = (pointer1.position + pointer2.position) / 2f
-                                        val previousCentroid =
-                                            (pointer1.previousPosition + pointer2.previousPosition) / 2f
                                         val pan = centroid - previousCentroid
+                                        boardOffset -= (pan / boardScale)
 
-                                        boardOffset -= (pan / boardScale).round()
+                                        previousDistance = distance
+                                        previousCentroid = centroid
                                     }
                                 }
 
-                                pointerCount == 1 && !isTransforming -> {
-                                    val pointer = currentPointers[0]
+                                pointerCount == 1 && !boardTransforming -> {
+                                    val pointer = event.changes[0]
                                     val change = pointer.position - pointer.previousPosition
 
                                     if (dragItemId != null) {
@@ -308,11 +319,11 @@ fun Whiteboard(
                                                 change.y.toDp().value.roundToInt()
                                             )
                                         }
-                                        dragOffset += (dpChange / boardScale)
+                                        dragItemOffset += (dpChange / boardScale)
                                         pointer.consume()
                                     } else {
-                                        totalMove += change
-                                        if (totalMove.getDistance() > viewConfig.touchSlop) {
+                                        totalChange += change
+                                        if (totalChange.getDistance() > viewConfig.touchSlop) {
                                             longPressJob?.cancel()
                                         }
                                         boardOffset -= (change / boardScale).round()
@@ -324,14 +335,12 @@ fun Whiteboard(
 
                         // When drag ends, apply final position
                         if (dragItemId != null) {
-                            onMoveItem(dragItemId!!, dragOffset)
+                            onMoveItem(dragItemId!!, dragItemOffset)
                         }
 
-                        longPressJob?.cancel()
                         dragItemId = null
-                        dragOffset = IntOffset.Zero
-                        totalMove = Offset.Zero
-                        isTransforming = false
+                        dragItemOffset = IntOffset.Zero
+                        longPressJob?.cancel()
                     }
                 }
         ) {
