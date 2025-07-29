@@ -29,8 +29,8 @@ fun WhiteboardDemo() {
                     id = it.toString(),
                     label = "Item $it",
                     offset = Offset(
-                        (it % 3) * 100f,
-                        (it / 3) * 100f
+                        (it % 3) * 300f,
+                        (it / 3) * 300f
                     ).round(),
                     size = IntSize(100, 100)
                 )

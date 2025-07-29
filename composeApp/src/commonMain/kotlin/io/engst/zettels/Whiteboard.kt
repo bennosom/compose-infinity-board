@@ -35,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -120,14 +123,14 @@ fun Whiteboard(
 ) {
     val density = LocalDensity.current
 
-    var boardSize by remember { mutableStateOf(IntSize.Zero) }
-    var boardOffset by remember { mutableStateOf(Offset.Zero) }
-    var boardScale by remember { mutableStateOf(1f) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var canvasOffset by remember { mutableStateOf(Offset.Zero) }
+    var canvasZoom by remember { mutableStateOf(1f) }
 
     var dragItemId by remember { mutableStateOf<String?>(null) }
     var dragItemOffset by remember { mutableStateOf(IntOffset.Zero) }
 
-    val itemBounds = remember(items) {
+    val globalBounds = remember(items) {
         if (items.isEmpty()) IntRect.Zero
         else {
             var minX = Int.MAX_VALUE
@@ -143,6 +146,8 @@ fun Whiteboard(
             }
 
             IntRect(minX, minY, maxX, maxY)
+        }.also {
+            println("globalBounds: $it")
         }
     }
 
@@ -151,7 +156,7 @@ fun Whiteboard(
         spatialIndex.rebuild(items)
     }
 
-    val visibleItems = remember(items, boardOffset, boardScale, boardSize) {
+    val visibleItems = remember(items, canvasOffset, canvasZoom, canvasSize) {
         items
         // TODO: enable viewport culling
 //        if (items.isEmpty()) return@remember emptyList<NoteItem>()
@@ -169,32 +174,36 @@ fun Whiteboard(
 //        }
     }
 
+    /**
+     * Zooms the canvas to fit the entire content within the viewport.
+     */
     fun zoomOverview() {
-        if (itemBounds.isEmpty || boardSize == IntSize.Zero) return
+        if (globalBounds.isEmpty || canvasSize == IntSize.Zero) return
 
-        val padding = 100f
-        val contentWidth = itemBounds.width.toFloat()
-        val contentHeight = itemBounds.height.toFloat()
+        val padding: Float
+        val globalSize: Size
+        val globalCenter: Offset
+        with(density) {
+            padding = 16.dp.toPx()
+            globalSize = Size(
+                width = globalBounds.width.toFloat().dp.toPx(),
+                height = globalBounds.height.toFloat().dp.toPx()
+            )
+            globalCenter = Offset(
+                x = globalBounds.left.toFloat().dp.toPx() + globalSize.width / 2,
+                y = globalBounds.top.toFloat().dp.toPx() + globalSize.height / 2
+            )
+        }
 
-        // Calculate scale to fit content with padding
-        val scaleX = (boardSize.width - padding * 2) / contentWidth
-        val scaleY = (boardSize.height - padding * 2) / contentHeight
-        val fitScale = min(scaleX, scaleY).coerceIn(BOARD_ZOOM_MIN, BOARD_ZOOM_MAX)
+        val scaleX = (canvasSize.width - padding * 2) / globalSize.width
+        val scaleY = (canvasSize.height - padding * 2) / globalSize.height
+        val overviewZoom = min(scaleX, scaleY).coerceIn(BOARD_ZOOM_MIN, BOARD_ZOOM_MAX)
+        canvasZoom = overviewZoom
 
-        // Calculate offset to center the content
-        val scaledContentWidth = contentWidth * fitScale
-        val scaledContentHeight = contentHeight * fitScale
-
-        val centerX = boardSize.width / 2f
-        val centerY = boardSize.height / 2f
-
-        val contentCenterX = itemBounds.left + contentWidth / 2f
-        val contentCenterY = itemBounds.top + contentHeight / 2f
-
-        boardScale = fitScale
-        boardOffset = Offset(
-            x = (centerX - contentCenterX * fitScale),
-            y = (centerY - contentCenterY * fitScale)
+        val canvasCenter = canvasSize.toSize().center
+        canvasOffset = Offset(
+            x = canvasCenter.x - globalCenter.x * canvasZoom,
+            y = canvasCenter.y - globalCenter.y * canvasZoom
         )
     }
 
@@ -204,7 +213,7 @@ fun Whiteboard(
      */
     fun mapTouchInput(pointer: Offset): Offset {
         return with(density) {
-            ((pointer - boardOffset) / boardScale).let { globalPx ->
+            ((pointer - canvasOffset) / canvasZoom).let { globalPx ->
                 Offset(
                     globalPx.x.toDp().value,
                     globalPx.y.toDp().value
@@ -234,7 +243,7 @@ fun Whiteboard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .onSizeChanged { boardSize = it }
+                .onSizeChanged { canvasSize = it }
                 .pointerInput(items) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
@@ -271,12 +280,12 @@ fun Whiteboard(
                                 }
 
                                 val centroid = event.calculateCentroid()
-                                val newScale =
-                                    (event.calculateZoom() * boardScale).coerceIn(0.05f, 5f)
-                                val scaleChange = newScale / boardScale
-                                boardOffset =
-                                    (boardOffset - centroid) * scaleChange + centroid + event.calculatePan()
-                                boardScale = newScale
+                                val newZoom =
+                                    (event.calculateZoom() * canvasZoom).coerceIn(0.05f, 5f)
+                                val scaleChange = newZoom / canvasZoom
+                                canvasOffset =
+                                    (canvasOffset - centroid) * scaleChange + centroid + event.calculatePan()
+                                canvasZoom = newZoom
                             } else if (pointerCount == 1) {
                                 val panChange = event.calculatePan()
 
@@ -286,7 +295,7 @@ fun Whiteboard(
                                     if (totalChange.getDistance() > viewConfig.touchSlop) {
                                         longPressJob?.cancel()
                                     }
-                                    boardOffset += panChange
+                                    canvasOffset += panChange
                                 } else {
                                     // drag the item
                                     val dpChange = with(density) {
@@ -295,7 +304,7 @@ fun Whiteboard(
                                             panChange.y.toDp().value.roundToInt()
                                         )
                                     }
-                                    dragItemOffset += (dpChange / boardScale)
+                                    dragItemOffset += (dpChange / canvasZoom)
                                 }
                             }
                         } while (pointerCount > 0)
@@ -318,10 +327,10 @@ fun Whiteboard(
                     .fillMaxSize()
                     .graphicsLayer {
                         transformOrigin = TransformOrigin(0f, 0f)
-                        scaleX = boardScale
-                        scaleY = boardScale
-                        translationX = boardOffset.x
-                        translationY = boardOffset.y
+                        scaleX = canvasZoom
+                        scaleY = canvasZoom
+                        translationX = canvasOffset.x
+                        translationY = canvasOffset.y
                     }
             ) {
                 Box(
@@ -374,10 +383,10 @@ fun Whiteboard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (boardScale != 1f) {
+                if (canvasZoom != 1f) {
                     AssistChip(
-                        onClick = { boardScale = 1f },
-                        label = { Text("${(boardScale * 100).toInt()}%") },
+                        onClick = { canvasZoom = 1f },
+                        label = { Text("${(canvasZoom * 100).toInt()}%") },
                         colors = SuggestionChipDefaults.suggestionChipColors().copy(
                             containerColor = MaterialTheme.colorScheme.surface,
                             trailingIconContentColor = MaterialTheme.colorScheme.onSurface
