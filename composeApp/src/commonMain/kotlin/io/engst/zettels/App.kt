@@ -11,38 +11,41 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.round
+import kotlin.math.sqrt
 
 @Composable
 fun App() {
-    MaterialTheme {
-        WhiteboardDemo()
+   MaterialTheme {
+      WhiteboardDemo()
 //        InfiniteWhiteboard()
-    }
+   }
 }
 
 @Composable
 fun WhiteboardDemo() {
-    var items by remember {
-        mutableStateOf(
-            List(9) {
-                NoteItem(
-                    id = it.toString(),
-                    label = "Item $it",
-                    offset = Offset(
-                        (it % 3) * 300f,
-                        (it / 3) * 300f
-                    ).round(),
-                    size = IntSize(100, 100)
-                )
-            }
-        )
-    }
+   var items by remember {
+      val size = 999
+      val columns = sqrt(size.toFloat()).toInt() + 1
+      mutableStateOf(
+         List(size) {
+            NoteItem(
+               id = it.toString(),
+               label = "Item $it",
+               offset = Offset(
+                  (it % columns) * 200f,
+                  (it / columns) * 200f
+               ).round(),
+               size = IntSize(100, 100)
+            )
+         }
+      )
+   }
 
-    Whiteboard(
-        items = items,
-        onMoveItem = { id, newOffset ->
-            items = items.map { if (it.id == id) it.copy(offset = newOffset) else it }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
+   Whiteboard(
+      items = items,
+      onMoveItem = { id, newOffset ->
+         items = items.map { if (it.id == id) it.copy(offset = newOffset) else it }
+      },
+      modifier = Modifier.fillMaxSize()
+   )
 }
