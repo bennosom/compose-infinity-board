@@ -11,11 +11,12 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun NoteView(
     item: NoteItem,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showElevated: Boolean = false,
 ) {
     Surface(
         shape = RoundedCornerShape(6.dp),
-        shadowElevation = 1.dp,
+        shadowElevation = if (showElevated) 4.dp else 1.dp,
         tonalElevation = 1.dp,
         modifier = modifier
     ) {

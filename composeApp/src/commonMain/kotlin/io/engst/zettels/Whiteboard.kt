@@ -56,57 +56,57 @@ import kotlin.math.roundToInt
 
 // Spatial index for efficient hit testing
 class SpatialIndex {
-   private val gridSize = 500
-   private val grid = mutableMapOf<Pair<Int, Int>, MutableSet<String>>()
-   private val itemPositions = mutableMapOf<String, NoteItem>()
+    private val gridSize = 500
+    private val grid = mutableMapOf<Pair<Int, Int>, MutableSet<String>>()
+    private val itemPositions = mutableMapOf<String, NoteItem>()
 
-   fun rebuild(items: List<NoteItem>) {
-      grid.clear()
-      itemPositions.clear()
-      items.forEach { insert(it) }
-   }
+    fun rebuild(items: List<NoteItem>) {
+        grid.clear()
+        itemPositions.clear()
+        items.forEach { insert(it) }
+    }
 
-   fun insert(item: NoteItem) {
-      itemPositions[item.id] = item
-      val cells = getCells(item)
-      cells.forEach { cell ->
-         grid.getOrPut(cell) { mutableSetOf() }.add(item.id)
-      }
-   }
+    fun insert(item: NoteItem) {
+        itemPositions[item.id] = item
+        val cells = getCells(item)
+        cells.forEach { cell ->
+            grid.getOrPut(cell) { mutableSetOf() }.add(item.id)
+        }
+    }
 
-   fun updateItem(item: NoteItem) {
-      // Remove from old cells
-      val oldItem = itemPositions[item.id]
-      if (oldItem != null) {
-         val oldCells = getCells(oldItem)
-         oldCells.forEach { cell ->
-            grid[cell]?.remove(item.id)
-         }
-      }
+    fun updateItem(item: NoteItem) {
+        // Remove from old cells
+        val oldItem = itemPositions[item.id]
+        if (oldItem != null) {
+            val oldCells = getCells(oldItem)
+            oldCells.forEach { cell ->
+                grid[cell]?.remove(item.id)
+            }
+        }
 
-      // Add to new cells
-      insert(item)
-   }
+        // Add to new cells
+        insert(item)
+    }
 
-   fun queryIds(point: IntOffset): List<String> {
-      val cell = Pair(point.x / gridSize, point.y / gridSize)
-      return grid[cell]?.toList() ?: emptyList()
-   }
+    fun queryIds(point: IntOffset): List<String> {
+        val cell = Pair(point.x / gridSize, point.y / gridSize)
+        return grid[cell]?.toList() ?: emptyList()
+    }
 
-   private fun getCells(item: NoteItem): List<Pair<Int, Int>> {
-      val startX = item.offset.x / gridSize
-      val endX = (item.offset.x + item.size.width) / gridSize
-      val startY = item.offset.y / gridSize
-      val endY = (item.offset.y + item.size.height) / gridSize
+    private fun getCells(item: NoteItem): List<Pair<Int, Int>> {
+        val startX = item.offset.x / gridSize
+        val endX = (item.offset.x + item.size.width) / gridSize
+        val startY = item.offset.y / gridSize
+        val endY = (item.offset.y + item.size.height) / gridSize
 
-      val cells = mutableListOf<Pair<Int, Int>>()
-      for (x in startX..endX) {
-         for (y in startY..endY) {
-            cells.add(Pair(x, y))
-         }
-      }
-      return cells
-   }
+        val cells = mutableListOf<Pair<Int, Int>>()
+        for (x in startX..endX) {
+            for (y in startY..endY) {
+                cells.add(Pair(x, y))
+            }
+        }
+        return cells
+    }
 }
 
 const val BOARD_ZOOM_MIN = 0.05f
@@ -114,46 +114,46 @@ const val BOARD_ZOOM_MAX = 5f
 
 @Composable
 fun Whiteboard(
-   items: List<NoteItem>,
-   onMoveItem: (id: String, newOffset: IntOffset) -> Unit,
-   modifier: Modifier = Modifier
+    items: List<NoteItem>,
+    onMoveItem: (id: String, newOffset: IntOffset) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-   val density = LocalDensity.current
+    val density = LocalDensity.current
 
-   var boardSize by remember { mutableStateOf(IntSize.Zero) }
-   var boardOffset by remember { mutableStateOf(Offset.Zero) }
-   var boardScale by remember { mutableStateOf(1f) }
+    var boardSize by remember { mutableStateOf(IntSize.Zero) }
+    var boardOffset by remember { mutableStateOf(Offset.Zero) }
+    var boardScale by remember { mutableStateOf(1f) }
 
-   var dragItemId by remember { mutableStateOf<String?>(null) }
-   var dragItemOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var dragItemId by remember { mutableStateOf<String?>(null) }
+    var dragItemOffset by remember { mutableStateOf(IntOffset.Zero) }
 
-   val itemBounds = remember(items) {
-      if (items.isEmpty()) IntRect.Zero
-      else {
-         var minX = Int.MAX_VALUE
-         var minY = Int.MAX_VALUE
-         var maxX = Int.MIN_VALUE
-         var maxY = Int.MIN_VALUE
+    val itemBounds = remember(items) {
+        if (items.isEmpty()) IntRect.Zero
+        else {
+            var minX = Int.MAX_VALUE
+            var minY = Int.MAX_VALUE
+            var maxX = Int.MIN_VALUE
+            var maxY = Int.MIN_VALUE
 
-         items.forEach { item ->
-            minX = minOf(minX, item.offset.x)
-            minY = minOf(minY, item.offset.y)
-            maxX = maxOf(maxX, item.offset.x + item.size.width)
-            maxY = maxOf(maxY, item.offset.y + item.size.height)
-         }
+            items.forEach { item ->
+                minX = minOf(minX, item.offset.x)
+                minY = minOf(minY, item.offset.y)
+                maxX = maxOf(maxX, item.offset.x + item.size.width)
+                maxY = maxOf(maxY, item.offset.y + item.size.height)
+            }
 
-         IntRect(minX, minY, maxX, maxY)
-      }
-   }
+            IntRect(minX, minY, maxX, maxY)
+        }
+    }
 
-   val spatialIndex = remember { SpatialIndex() }
-   LaunchedEffect(items) {
-      spatialIndex.rebuild(items)
-   }
+    val spatialIndex = remember { SpatialIndex() }
+    LaunchedEffect(items) {
+        spatialIndex.rebuild(items)
+    }
 
-   val visibleItems = remember(items, boardOffset, boardScale, boardSize) {
-      items
-      // TODO: enable viewport culling
+    val visibleItems = remember(items, boardOffset, boardScale, boardSize) {
+        items
+        // TODO: enable viewport culling
 //        if (items.isEmpty()) return@remember emptyList<NoteItem>()
 //
 //        val visibleLeft = (-offset.x / scale).toInt()
@@ -167,231 +167,238 @@ fun Whiteboard(
 //                    item.offset.y < visibleBottom &&
 //                    item.offset.y + item.size.height > visibleTop
 //        }
-   }
+    }
 
-   fun zoomOverview() {
-      if (itemBounds.isEmpty || boardSize == IntSize.Zero) return
+    fun zoomOverview() {
+        if (itemBounds.isEmpty || boardSize == IntSize.Zero) return
 
-      val padding = 100f
-      val contentWidth = itemBounds.width.toFloat()
-      val contentHeight = itemBounds.height.toFloat()
+        val padding = 100f
+        val contentWidth = itemBounds.width.toFloat()
+        val contentHeight = itemBounds.height.toFloat()
 
-      // Calculate scale to fit content with padding
-      val scaleX = (boardSize.width - padding * 2) / contentWidth
-      val scaleY = (boardSize.height - padding * 2) / contentHeight
-      val fitScale = min(scaleX, scaleY).coerceIn(BOARD_ZOOM_MIN, BOARD_ZOOM_MAX)
+        // Calculate scale to fit content with padding
+        val scaleX = (boardSize.width - padding * 2) / contentWidth
+        val scaleY = (boardSize.height - padding * 2) / contentHeight
+        val fitScale = min(scaleX, scaleY).coerceIn(BOARD_ZOOM_MIN, BOARD_ZOOM_MAX)
 
-      // Calculate offset to center the content
-      val scaledContentWidth = contentWidth * fitScale
-      val scaledContentHeight = contentHeight * fitScale
+        // Calculate offset to center the content
+        val scaledContentWidth = contentWidth * fitScale
+        val scaledContentHeight = contentHeight * fitScale
 
-      val centerX = boardSize.width / 2f
-      val centerY = boardSize.height / 2f
+        val centerX = boardSize.width / 2f
+        val centerY = boardSize.height / 2f
 
-      val contentCenterX = itemBounds.left + contentWidth / 2f
-      val contentCenterY = itemBounds.top + contentHeight / 2f
+        val contentCenterX = itemBounds.left + contentWidth / 2f
+        val contentCenterY = itemBounds.top + contentHeight / 2f
 
-      boardScale = fitScale
-      boardOffset = Offset(
-         x = (centerX - contentCenterX * fitScale),
-         y = (centerY - contentCenterY * fitScale)
-      )
-   }
+        boardScale = fitScale
+        boardOffset = Offset(
+            x = (centerX - contentCenterX * fitScale),
+            y = (centerY - contentCenterY * fitScale)
+        )
+    }
 
-   fun findItemAtPosition(items: List<NoteItem>, position: Offset): NoteItem? {
-      val mappedPosition = ((position + boardOffset) / boardScale).round()
-      val fixedPosition = with(density) {
-         IntOffset(
-            mappedPosition.x.toDp().value.roundToInt(),
-            mappedPosition.y.toDp().value.roundToInt()
-         )
-      }
-
-      val candidateIds = spatialIndex.queryIds(fixedPosition)
-      return items.filter { it.id in candidateIds }.lastOrNull { item ->
-         fixedPosition.x in item.offset.x..(item.offset.x + item.size.width) &&
-           fixedPosition.y in item.offset.y..(item.offset.y + item.size.height)
-      }
-   }
-
-   fun getItemOffset(item: NoteItem): IntOffset {
-      return if (dragItemId == item.id) {
-         dragItemOffset
-      } else {
-         item.offset
-      }
-   }
-
-   Surface(modifier = modifier) {
-      val viewConfig = LocalViewConfiguration.current
-      val scope = rememberCoroutineScope()
-
-      Box(
-         modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { boardSize = it }
-            .pointerInput(items) {
-               awaitEachGesture {
-                  val firstDown = awaitFirstDown(requireUnconsumed = false)
-                  println("First down at ${firstDown.position}")
-                  var pointerCount: Int
-                  var longPressJob: Job? = null
-                  var totalChange = Offset.Zero
-
-                  val touchedItem = findItemAtPosition(items, firstDown.position)
-                  if (touchedItem != null) {
-                     println("Touched item: ${touchedItem.id} at ${touchedItem.offset}")
-                     longPressJob = scope.launch {
-                        println("Wait ${viewConfig.longPressTimeoutMillis} for long press detection")
-                        delay(viewConfig.longPressTimeoutMillis)
-                        println("Long press timeout")
-                        dragItemId = touchedItem.id
-                        dragItemOffset = touchedItem.offset
-                     }
-                  }
-
-                  do {
-                     val event = awaitPointerEvent()
-                     pointerCount = event.changes.filter { it.pressed }.size
-
-                     when {
-                        pointerCount >= 2 -> {
-                           longPressJob?.cancel()
-
-                           // Finish item drag if multi-touch starts
-                           if (dragItemId != null) {
-                              onMoveItem(dragItemId!!, dragItemOffset)
-                              dragItemId = null
-                           }
-
-                           val centroid = event.calculateCentroid()
-                           val newScale = (event.calculateZoom() * boardScale).coerceIn(0.05f, 5f)
-                           val scaleChange = newScale / boardScale
-                           boardOffset =
-                              (boardOffset - centroid) * scaleChange + centroid + event.calculatePan()
-                           boardScale = newScale
-                        }
-
-                        pointerCount == 1 -> {
-                           val panChange = event.calculatePan()
-
-                           if (dragItemId == null) {
-                              // pan the board
-                              totalChange += panChange
-                              if (totalChange.getDistance() > viewConfig.touchSlop) {
-                                 longPressJob?.cancel()
-                              }
-                              boardOffset += panChange
-                           } else {
-                              // drag the item
-                              val dpChange = with(density) {
-                                 IntOffset(
-                                    panChange.x.toDp().value.roundToInt(),
-                                    panChange.y.toDp().value.roundToInt()
-                                 )
-                              }
-                              dragItemOffset += (dpChange / boardScale)
-                           }
-                        }
-                     }
-                  } while (pointerCount > 0)
-                  longPressJob?.cancel()
-
-                  // When drag ends, apply final position
-                  if (dragItemId != null) {
-                     onMoveItem(dragItemId!!, dragItemOffset)
-                  }
-
-                  dragItemId = null
-                  dragItemOffset = IntOffset.Zero
-               }
+    /**
+     * Maps touch input coordinates from the canvas space to the global coordinate space.
+     * Global coordinates are in Dp, while the canvas space is in pixels.
+     */
+    fun mapTouchInput(pointer: Offset): Offset {
+        return with(density) {
+            ((pointer - boardOffset) / boardScale).let { globalPx ->
+                Offset(
+                    globalPx.x.toDp().value,
+                    globalPx.y.toDp().value
+                ).also {
+                    println("mapTouchInput: $pointer to $it")
+                }
             }
-      ) {
-         // infinite board
-         Box(
+        }
+    }
+
+    /**
+     * Finds the item at the given global coordinates using the spatial index.
+     * Returns the last item that contains the point, or null if no item is found.
+     */
+    fun findItem(items: List<NoteItem>, global: IntOffset): NoteItem? {
+        val candidateIds = spatialIndex.queryIds(global)
+        return items.filter { it.id in candidateIds }.lastOrNull { item ->
+            global.x in item.offset.x..(item.offset.x + item.size.width) &&
+                    global.y in item.offset.y..(item.offset.y + item.size.height)
+        }
+    }
+
+    Surface(modifier = modifier) {
+        val viewConfig = LocalViewConfiguration.current
+        val scope = rememberCoroutineScope()
+
+        Box(
             modifier = Modifier
-               .fillMaxSize()
-               .graphicsLayer {
-                  transformOrigin = TransformOrigin(0f, 0f)
-                  scaleX = boardScale
-                  scaleY = boardScale
-                  translationX = boardOffset.x
-                  translationY = boardOffset.y
-               }
-         ) {
+                .fillMaxSize()
+                .onSizeChanged { boardSize = it }
+                .pointerInput(items) {
+                    awaitEachGesture {
+                        val firstDown = awaitFirstDown(requireUnconsumed = false)
+                        println("pointerInput: start at ${firstDown.position}")
+                        var pointerCount: Int
+                        var longPressJob: Job? = null
+                        var totalChange = Offset.Zero
+
+                        val global = mapTouchInput(firstDown.position).round()
+                        val touchedItem = findItem(items, global)
+                        if (touchedItem != null) {
+                            println("pointerInput: found $touchedItem")
+                            longPressJob = scope.launch {
+                                delay(viewConfig.longPressTimeoutMillis)
+                                println("pointerInput: long press detected")
+                                dragItemId = touchedItem.id
+                                dragItemOffset = touchedItem.offset
+                            }
+                        }
+
+                        do {
+                            val event = awaitPointerEvent()
+                            pointerCount =
+                                event.changes.filter { it.pressed }.size// drag the item// pan the board
+
+                            // Finish item drag if multi-touch starts
+                            if (pointerCount >= 2) {
+                                longPressJob?.cancel()
+
+                                // Finish item drag if multi-touch starts
+                                if (dragItemId != null) {
+                                    onMoveItem(dragItemId!!, dragItemOffset)
+                                    dragItemId = null
+                                }
+
+                                val centroid = event.calculateCentroid()
+                                val newScale =
+                                    (event.calculateZoom() * boardScale).coerceIn(0.05f, 5f)
+                                val scaleChange = newScale / boardScale
+                                boardOffset =
+                                    (boardOffset - centroid) * scaleChange + centroid + event.calculatePan()
+                                boardScale = newScale
+                            } else if (pointerCount == 1) {
+                                val panChange = event.calculatePan()
+
+                                if (dragItemId == null) {
+                                    // pan the board
+                                    totalChange += panChange
+                                    if (totalChange.getDistance() > viewConfig.touchSlop) {
+                                        longPressJob?.cancel()
+                                    }
+                                    boardOffset += panChange
+                                } else {
+                                    // drag the item
+                                    val dpChange = with(density) {
+                                        IntOffset(
+                                            panChange.x.toDp().value.roundToInt(),
+                                            panChange.y.toDp().value.roundToInt()
+                                        )
+                                    }
+                                    dragItemOffset += (dpChange / boardScale)
+                                }
+                            }
+                        } while (pointerCount > 0)
+                        longPressJob?.cancel()
+                        println("pointerInput: finished")
+
+                        // When drag ends, apply final position
+                        if (dragItemId != null) {
+                            onMoveItem(dragItemId!!, dragItemOffset)
+                        }
+
+                        dragItemId = null
+                        dragItemOffset = IntOffset.Zero
+                    }
+                }
+        ) {
+            // infinite board
             Box(
-               modifier = Modifier
-                  .wrapContentSize(unbounded = true)
-                  .border(2.dp, Color.Magenta)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        transformOrigin = TransformOrigin(0f, 0f)
+                        scaleX = boardScale
+                        scaleY = boardScale
+                        translationX = boardOffset.x
+                        translationY = boardOffset.y
+                    }
             ) {
-               visibleItems.forEach { item ->
-                  key(item.id) {
-                     val effectiveOffset = getItemOffset(item)
-                     val isDragging = dragItemId == item.id
+                Box(
+                    modifier = Modifier
+                        .wrapContentSize(unbounded = true)
+                        .border(2.dp, Color.Magenta)
+                ) {
+                    visibleItems.forEach { item ->
+                        key(item.id) {
+                            val effectiveOffset = if (dragItemId == item.id) {
+                                dragItemOffset
+                            } else {
+                                item.offset
+                            }
+                            val isDragging = dragItemId == item.id
 
-                     NoteView(
-                        item = item,
-                        modifier = Modifier
-                           .absoluteOffset {
-                              IntOffset(
-                                 effectiveOffset.x.dp.toPx().roundToInt(),
-                                 effectiveOffset.y.dp.toPx().roundToInt()
-                              )
-                           }
-                           .size(item.size.width.dp, item.size.height.dp)
-                           .then(
-                              if (isDragging)
-                                 Modifier
-                                    .zIndex(Float.MAX_VALUE)
-                                    .graphicsLayer { shadowElevation = 2f }
-                              else Modifier
-                           )
-                     )
-                  }
-               }
+                            NoteView(
+                                item = item,
+                                modifier = Modifier
+                                    .absoluteOffset {
+                                        IntOffset(
+                                            effectiveOffset.x.dp.toPx().roundToInt(),
+                                            effectiveOffset.y.dp.toPx().roundToInt()
+                                        )
+                                    }
+                                    .size(item.size.width.dp, item.size.height.dp)
+                                    .then(
+                                        if (isDragging) Modifier.zIndex(Float.MAX_VALUE)
+                                        else Modifier
+                                    ),
+                                showElevated = isDragging
+                            )
+                        }
+                    }
+                }
             }
-         }
 
-         // control overlay
-         Row(
-            modifier = Modifier
-               .align(Alignment.TopEnd)
-               .safeDrawingPadding()
-               .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-         ) {
-            Text(
-               text = "Visible: ${visibleItems.size}/${items.size}",
-               style = MaterialTheme.typography.bodySmall,
-               color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // control overlay
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .safeDrawingPadding()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Visible: ${visibleItems.size}/${items.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
-            if (boardScale != 1f) {
-               AssistChip(
-                  onClick = { boardScale = 1f },
-                  label = { Text("${(boardScale * 100).toInt()}%") },
-                  colors = SuggestionChipDefaults.suggestionChipColors().copy(
-                     containerColor = MaterialTheme.colorScheme.surface,
-                     trailingIconContentColor = MaterialTheme.colorScheme.onSurface
-                  ),
-                  trailingIcon = {
-                     Icon(Icons.Default.Close, contentDescription = "Zoom 100%")
-                  }
-               )
+                if (boardScale != 1f) {
+                    AssistChip(
+                        onClick = { boardScale = 1f },
+                        label = { Text("${(boardScale * 100).toInt()}%") },
+                        colors = SuggestionChipDefaults.suggestionChipColors().copy(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            trailingIconContentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        trailingIcon = {
+                            Icon(Icons.Default.Close, contentDescription = "Zoom 100%")
+                        }
+                    )
+                }
+                AssistChip(
+                    onClick = { zoomOverview() },
+                    leadingIcon = {
+                        Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out")
+                    },
+                    label = { Text("Overview") },
+                    colors = SuggestionChipDefaults.suggestionChipColors().copy(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        trailingIconContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                )
             }
-            AssistChip(
-               onClick = { zoomOverview() },
-               leadingIcon = {
-                  Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out")
-               },
-               label = { Text("Overview") },
-               colors = SuggestionChipDefaults.suggestionChipColors().copy(
-                  containerColor = MaterialTheme.colorScheme.surface,
-                  trailingIconContentColor = MaterialTheme.colorScheme.onSurface
-               ),
-            )
-         }
-      }
-   }
+        }
+    }
 }
