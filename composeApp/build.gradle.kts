@@ -69,6 +69,12 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
             implementation("io.ktor:ktor-client-cio:2.3.4")
+
+            // See https://github.com/JetBrains/Jewel/releases for the release notes
+            implementation("org.jetbrains.jewel:jewel-int-ui-standalone:0.15.2")
+
+            // Optional, for custom decorated windows:
+            implementation("org.jetbrains.jewel:jewel-int-ui-decorated-window:0.15.2")
         }
     }
 }
