@@ -51,7 +51,13 @@ fun main() = application {
          },
       ) {
          TitleBarView()
-         App()
+         MouseWheel(
+            onScroll = { offset, delta ->
+               println("onScroll: offset=$offset delta=$delta")
+            }
+         ) {
+            App()
+         }
       }
    }
 }
