@@ -20,6 +20,6 @@ fun NoteView(
         tonalElevation = 1.dp,
         modifier = modifier
     ) {
-        Text(item.id, modifier = Modifier.padding(12.dp))
+        Text(item.description, modifier = Modifier.padding(12.dp))
     }
 }

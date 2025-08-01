@@ -1,5 +1,6 @@
 package io.engst.zettels
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -15,9 +16,12 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
@@ -46,13 +50,13 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 // Spatial index for efficient hit testing
 class SpatialIndex {
@@ -116,6 +120,7 @@ const val BOARD_ZOOM_MAX = 5f
 fun Whiteboard(
    items: List<NoteItem>,
    onMoveItem: (id: String, newOffset: IntOffset) -> Unit,
+   onSmartArrange: () -> Unit,
    modifier: Modifier = Modifier
 ) {
    val density = LocalDensity.current
@@ -125,7 +130,7 @@ fun Whiteboard(
    var canvasZoom by remember { mutableStateOf(1f) }
 
    var dragItemId by remember { mutableStateOf<String?>(null) }
-   var dragItemOffset by remember { mutableStateOf(IntOffset.Zero) }
+   var dragItemOffset by remember { mutableStateOf(Offset.Zero) }
 
    val globalBounds = remember(items) {
       if (items.isEmpty()) IntRect.Zero
@@ -258,7 +263,7 @@ fun Whiteboard(
                         delay(viewConfig.longPressTimeoutMillis)
                         println("pointerInput: long press detected")
                         dragItemId = touchedItem.id
-                        dragItemOffset = touchedItem.offset
+                        dragItemOffset = touchedItem.offset.toOffset()
                      }
                   }
 
@@ -273,7 +278,7 @@ fun Whiteboard(
 
                         // Finish item drag if multi-touch starts
                         if (dragItemId != null) {
-                           onMoveItem(dragItemId!!, dragItemOffset)
+                           onMoveItem(dragItemId!!, dragItemOffset.round())
                            dragItemId = null
                         }
 
@@ -297,9 +302,9 @@ fun Whiteboard(
                         } else {
                            // drag the item
                            val dpChange = with(density) {
-                              IntOffset(
-                                 panChange.x.toDp().value.roundToInt(),
-                                 panChange.y.toDp().value.roundToInt()
+                              Offset(
+                                 panChange.x.toDp().value,
+                                 panChange.y.toDp().value
                               )
                            }
                            dragItemOffset += (dpChange / canvasZoom)
@@ -311,11 +316,11 @@ fun Whiteboard(
 
                   // When drag ends, apply final position
                   if (dragItemId != null) {
-                     onMoveItem(dragItemId!!, dragItemOffset)
+                     onMoveItem(dragItemId!!, dragItemOffset.round())
                   }
 
                   dragItemId = null
-                  dragItemOffset = IntOffset.Zero
+                  dragItemOffset = Offset.Zero
                }
             }
       ) {
@@ -331,12 +336,10 @@ fun Whiteboard(
                   translationY = canvasOffset.y
                }
          ) {
-            AbsoluteBox(
-               modifier = Modifier.border(2.dp, Color.Magenta)
-            ) {
+            AbsoluteBox {
                visibleItems.forEach { item ->
                   val isDragging = dragItemId == item.id
-                  val offset = if (dragItemId == item.id) dragItemOffset else item.offset
+                  val offset = if (dragItemId == item.id) dragItemOffset else item.offset.toOffset()
                   NoteView(
                      item = item,
                      modifier = Modifier
@@ -360,11 +363,9 @@ fun Whiteboard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
          ) {
-            Text(
-               text = "Visible: ${visibleItems.size}/${items.size}",
-               style = MaterialTheme.typography.bodySmall,
-               color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            IconButton(onClick = onSmartArrange) {
+               Icon(Icons.Default.SmartToy, contentDescription = "Smart Arrange")
+            }
 
             if (canvasZoom != 1f) {
                AssistChip(
@@ -372,8 +373,10 @@ fun Whiteboard(
                   label = { Text("${(canvasZoom * 100).toInt()}%") },
                   colors = SuggestionChipDefaults.suggestionChipColors().copy(
                      containerColor = MaterialTheme.colorScheme.surface,
-                     trailingIconContentColor = MaterialTheme.colorScheme.onSurface
+                     trailingIconContentColor = MaterialTheme.colorScheme.onSurface,
+
                   ),
+                  border = AssistChipDefaults.assistChipBorder(true, borderColor = MaterialTheme.colorScheme.surfaceVariant),
                   trailingIcon = {
                      Icon(Icons.Default.Close, contentDescription = "Zoom 100%")
                   }
@@ -389,6 +392,7 @@ fun Whiteboard(
                   containerColor = MaterialTheme.colorScheme.surface,
                   trailingIconContentColor = MaterialTheme.colorScheme.onSurface
                ),
+               border = AssistChipDefaults.assistChipBorder(true, borderColor = MaterialTheme.colorScheme.surfaceVariant),
             )
          }
       }
