@@ -14,6 +14,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.round
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.ui.tooling.preview.Preview
+
+@Preview
+@Composable
+fun AppPreview() {
+   App()
+}
 
 @Composable
 fun App() {
