@@ -3,7 +3,7 @@ package io.engst.zettels
 import org.jetbrains.skiko.SystemTheme
 import org.jetbrains.skiko.currentSystemTheme
 
-enum class IntUiThemes {
+enum class IntUiTheme {
    Light,
    LightWithLightHeader,
    Dark,
@@ -14,7 +14,7 @@ enum class IntUiThemes {
    fun isLightHeader(): Boolean = this == LightWithLightHeader
 
    companion object {
-      fun fromSystemTheme(systemTheme: SystemTheme): IntUiThemes =
+      fun fromSystemTheme(systemTheme: SystemTheme): IntUiTheme =
          if (systemTheme == SystemTheme.LIGHT) Light else Dark
    }
 }

@@ -1,19 +1,30 @@
 package io.engst.zettels
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.round
-import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Preview
@@ -23,71 +34,87 @@ fun AppPreview() {
 }
 
 @Composable
-fun App() {
-   MaterialTheme {
-      WhiteboardDemo()
-   }
-}
+fun App(
+   stateHolder: WhiteBoardStateHolder = WhiteBoardStateHolder(),
+   isDarkMode: Boolean = isSystemInDarkTheme()
+) {
+   val colorScheme = if (isDarkMode) darkColorScheme() else lightColorScheme()
+   MaterialTheme(colorScheme = colorScheme) {
 
-@Composable
-fun WhiteboardDemo() {
-   var items by remember {
-      val initialItems = listOf(
-         "Gurke",
-         "Zitrone",
-         "Steak",
-         "Kartoffel",
-         "Klopapier",
-         "Waschmittel",
-         "Brot",
-         "Butter",
-         "Wurst",
-         "Apfel",
-      ).mapIndexed { index, description ->
-         NoteItem(
-            id = index.toString(),  // unique identifier for each item
-            description = description,
-            offset = Offset(
-               (index % 4) * 200f,
-               (index / 4) * 200f
-            ).round(),
-            size = IntSize(100, 100)
+      val density = LocalDensity.current
+      val state by stateHolder.state.collectAsStateWithLifecycle()
+      val zoomToFit by stateHolder.zoomToFit.collectAsStateWithLifecycle()
+      var userScale by remember(state) { mutableStateOf(0f) }
+      var userOffset by remember(state) { mutableStateOf(Offset.Zero) }
+      var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+      var boardBounds by remember { mutableStateOf(IntRect.Zero) }
+
+      LaunchedEffect(viewportSize, boardBounds, zoomToFit) {
+         if (zoomToFit) {
+            stateHolder.zoomToFit(
+               viewportSize = viewportSize,
+               boardBounds = boardBounds,
+               padding = with(density) { 16.dp.roundToPx() }
+            )
+         }
+      }
+
+      Box(Modifier.fillMaxSize()) {
+         Whiteboard(
+            state = state,
+            onUserTransform = { scale, offset ->
+               userScale = scale
+               userOffset = offset
+            },
+            onFinalTransform = { scale, offset ->
+               stateHolder.transform(
+                  scale = state.scale + scale,
+                  offset = state.offset + offset
+               )
+            },
+            onItemMoved = { id, offsetPx ->
+               val offset = with(density) { DpOffset(offsetPx.x.toDp(), offsetPx.y.toDp()) }
+               stateHolder.moveItem(id, offset)
+            },
+            onBoundsChanged = { boardBounds = it },
+            modifier = Modifier
+               .fillMaxSize()
+               .onSizeChanged { viewportSize = it }
+         )
+
+         ControlOverlay(
+            state = state,
+            userScale = userScale,
+            onZoomReset = {
+               stateHolder.zoomReset(
+                  viewportSize = viewportSize,
+                  boardSize = boardBounds.size
+               )
+            },
+            onZoomToFit = {
+               stateHolder.zoomToFit(
+                  viewportSize = viewportSize,
+                  boardBounds = boardBounds,
+                  padding = with(density) { 16.dp.roundToPx() }
+               )
+            },
+            onSmartArrange = { stateHolder.smartArrange() },
+            modifier = Modifier.fillMaxSize()
+         )
+
+         val density = LocalDensity.current
+         Text(
+            """
+               density=${density.density}
+               viewport=$viewportSize 
+               boardBounds=$boardBounds
+               scale=${state.scale} / $userScale
+               offset=${state.offset} / $userOffset
+            """.trimIndent(),
+            modifier = Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
          )
       }
-      mutableStateOf(initialItems)
    }
-
-   val scope = rememberCoroutineScope()
-
-   Whiteboard(
-      items = items,
-      onMoveItem = { id, newOffset ->
-         items = items.map { if (it.id == id) it.copy(offset = newOffset) else it }
-      },
-      onSmartArrange = {
-         scope.launch {
-            val suggestions = OpenAI.arrangeItems(items.map {
-               Item(
-                  id = it.id,
-                  description = it.description,
-                  position = Position(it.offset.x, it.offset.y),
-                  size = Size(it.size.width, it.size.height)
-               )
-            })
-            println("smart arranged items: $suggestions")
-
-            items = items.map { item ->
-               suggestions.find { it.id == item.id }?.let { suggestedItem ->
-                  item.copy(
-                     offset = IntOffset(
-                        suggestedItem.position.x,
-                        suggestedItem.position.y
-                     )
-                  )
-               } ?: item
-            }
-         }
-      },
-      modifier = Modifier.fillMaxSize()
-   )
 }

@@ -1,12 +1,7 @@
 package io.engst.zettels
 
-// Absolut positionierender Container für sehr viele Kinder (z.B. 10_000)
-// - O(n)-Messung, ungebundenes Messen der Kinder
-// - Größe = Bounding-Box aller Kinder, innerhalb der vom Eltern-Constraint erlaubten Grenzen
-// - Zwei Varianten der Positionsangabe: Dp (bequem) und Px (performanter)
-
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
@@ -15,64 +10,109 @@ import androidx.compose.ui.layout.ParentDataModifier
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.dp
+import kotlin.time.measureTime
 
+/**
+ * Layout that has no own bounds and only min-constraints for its children.
+ * All children are placed and sized absolutely by Modifier.absolutePositionAndSize
+ *
+ * @param onMeasured Callback after children have been measured (everything in pixels)
+ */
 @Composable
 fun AbsoluteBox(
    modifier: Modifier = Modifier,
-   content: @Composable AbsoluteLayoutScope.() -> Unit
+   onMeasured: (layoutBounds: IntRect, childBounds: Array<IntRect>) -> Unit,
+   content: @Composable AbsoluteBoxScope.() -> Unit
 ) {
    Layout(
-      content = { AbsoluteLayoutScopeInstance.content() },
+      content = { AbsoluteBoxScopeInstance.content() },
       modifier = modifier,
       measurePolicy = { measurables, constraints ->
-         // Kinder ungebunden messen
-         val unbounded = Constraints(
-            minWidth = 0, maxWidth = Constraints.Infinity,
-            minHeight = 0, maxHeight = Constraints.Infinity
+         val childConstraints = Constraints(
+            minWidth = 50.dp.roundToPx(),
+            maxWidth = Constraints.Infinity,
+            minHeight = 50.dp.roundToPx(),
+            maxHeight = Constraints.Infinity
          )
+         println("Measuring: ${measurables.size} with constraints $childConstraints")
 
          val count = measurables.size
-         val xs = IntArray(count)
-         val ys = IntArray(count)
+         val childBounds = arrayOfNulls<IntRect>(count)
          val placeables = arrayOfNulls<Placeable>(count)
 
+         var i = 0
+         var maxLeft = 0
+         var maxTop = 0
          var maxRight = 0
          var maxBottom = 0
+         var measurable: Measurable
+         var placeable: Placeable
+         var parentData: DpRect
+         var rect: IntRect
 
-         var i = 0
-         while (i < count) {
-            val m: Measurable = measurables[i]
-            val pd = (m.parentData as? AbsoluteParentData) ?: AbsoluteParentData(0, 0)
-            val p = m.measure(unbounded)
-            xs[i] = pd.x
-            ys[i] = pd.y
+         measureTime {
+            while (i < count) {
+               measurable = measurables[i]
 
-            val right = pd.x + p.width
-            val bottom = pd.y + p.height
-            if (right > maxRight) maxRight = right
-            if (bottom > maxBottom) maxBottom = bottom
+               placeable = measurable.measure(childConstraints)
+               placeables[i] = placeable
 
-            placeables[i] = p
-            i++
+               parentData = measurable.parentData as? DpRect ?: run {
+                  println("Warning: parentData is null for measurable $i")
+                  DpRect(0.dp, 0.dp, 0.dp, 0.dp)
+               }
+               rect = IntRect(
+                  left = parentData.left.roundToPx(),
+                  top = parentData.top.roundToPx(),
+                  right = parentData.left.roundToPx() + placeable.measuredWidth,
+                  bottom = parentData.top.roundToPx() + placeable.measuredHeight
+               )
+               childBounds[i] = rect
+
+               if (rect.left < maxLeft) maxLeft = rect.left
+               if (rect.top < maxTop) maxTop = rect.top
+               if (rect.right > maxRight) maxRight = rect.right
+               if (rect.bottom > maxBottom) maxBottom = rect.bottom
+
+               i++
+            }
+         }.also {
+            println("AbsoluteBox: measure pass took ${it.inWholeMilliseconds}ms")
          }
 
-         val w = if (constraints.hasBoundedWidth)
-            maxRight.coerceIn(constraints.minWidth, constraints.maxWidth)
-         else
-            maxRight.coerceAtLeast(constraints.minWidth)
+         val layoutBounds = IntRect(maxLeft, maxTop, maxRight, maxBottom)
 
-         val h = if (constraints.hasBoundedHeight)
-            maxBottom.coerceIn(constraints.minHeight, constraints.maxHeight)
-         else
-            maxBottom.coerceAtLeast(constraints.minHeight)
+         measureTime {
+            onMeasured(layoutBounds, childBounds as Array<IntRect>)
+         }.also {
+            println("AbsoluteBox: onMeasure callback took ${it.inWholeMilliseconds}ms")
+         }
 
-         layout(w, h) {
-            var j = 0
-            while (j < count) {
-               // TODO: use item zindex to determine stacking order
-               placeables[j]!!.placeRelative(xs[j], ys[j], zIndex = 0f)
-               j++
+         /**
+          * Actually using `layoutBounds.width, layoutBounds.height` as layout size would be
+          * correct, but if the content is larger than its parent Compose will center it inside
+          * its parent. Therefore we need to size it with given max-constraints.
+          */
+         layout(constraints.maxWidth, constraints.maxHeight) {
+            measureTime {
+               var j = 0
+               while (j < count) {
+                  // TODO: use item zindex to determine stacking order
+                  // TODO: check placeWithLayer
+                  placeables[j]!!.place(
+                     x = childBounds[j]!!.left,
+                     y = childBounds[j]!!.top,
+                     zIndex = 0f
+                  )
+                  j++
+               }
+            }.also {
+               println("AbsoluteBox: layout pass took ${it.inWholeMilliseconds}ms")
             }
          }
       }
@@ -80,58 +120,22 @@ fun AbsoluteBox(
 }
 
 @Stable
-interface AbsoluteLayoutScope {
-   fun Modifier.absolutePosition(x: Dp, y: Dp): Modifier
-   fun Modifier.absolutePositionPx(x: Int, y: Int): Modifier
+interface AbsoluteBoxScope {
+   fun Modifier.absolutePositionAndSize(offset: DpOffset, size: DpSize = DpSize.Zero): Modifier
 }
 
-private object AbsoluteLayoutScopeInstance : AbsoluteLayoutScope {
-   override fun Modifier.absolutePosition(x: Dp, y: Dp): Modifier =
-      this.then(PositionDpParentDataModifier(x, y))
-
-   override fun Modifier.absolutePositionPx(x: Int, y: Int): Modifier =
-      this.then(PositionPxParentDataModifier(x, y))
+private object AbsoluteBoxScopeInstance : AbsoluteBoxScope {
+   override fun Modifier.absolutePositionAndSize(offset: DpOffset, size: DpSize): Modifier =
+      this
+         .size(size)
+         .then(AbsoluteBoxParentDataModifier(offset, size))
 }
 
-@Immutable
-private data class AbsoluteParentData(val x: Int, val y: Int)
-
-private data class PositionDpParentDataModifier(
-   val x: Dp,
-   val y: Dp
+private data class AbsoluteBoxParentDataModifier(
+   val offset: DpOffset,
+   val size: DpSize
 ) : ParentDataModifier {
    override fun Density.modifyParentData(parentData: Any?): Any {
-      return AbsoluteParentData(x.roundToPx(), y.roundToPx())
+      return DpRect(offset, size)
    }
 }
-
-private data class PositionPxParentDataModifier(
-   val x: Int,
-   val y: Int
-) : ParentDataModifier {
-   override fun Density.modifyParentData(parentData: Any?): Any {
-      return AbsoluteParentData(x, y)
-   }
-}
-
-/* --- Beispielnutzung --- */
-/*
-@Composable
-fun AbsoluteLayoutDemo() {
-    val cols = 100
-    val size = 24.dp
-
-    AbsoluteLayout(Modifier) {
-        // 10_000 Elemente in 100x100 Grid
-        for (i in 0 until 10_000) {
-            val x = (i % cols) * 40   // px-Variante ist günstiger, hier nur Dp zur Illustration
-            val y = (i / cols) * 40
-            androidx.compose.foundation.Box(
-                modifier = Modifier
-                    .positionPx(x, y)   // für maximale Performance: positionPx verwenden
-                    .size(size)
-            )
-        }
-    }
-}
-*/

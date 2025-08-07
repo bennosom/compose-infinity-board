@@ -1,6 +1,13 @@
 package io.engst.zettels
 
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.DpSize
 
-data class NoteItem(val id: String, val description: String, val offset: IntOffset, val size: IntSize)
+@Immutable
+data class NoteItem(
+   val id: String,
+   val description: String,
+   val offset: DpOffset,
+   val size: DpSize = DpSize.Zero
+)
